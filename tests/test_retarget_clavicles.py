@@ -3,7 +3,7 @@ import unittest
 import numpy as np
 from scipy.spatial.transform import Rotation
 
-from mocap.retarget.calibration import clavicle_rest_lift, clavicle_rotations
+from mocap.retarget.calibration import clavicle_rest_calibration, clavicle_rest_lift, clavicle_rotations
 
 
 def rest_pose(upper_deg, clavicle_deg):
@@ -54,6 +54,32 @@ class ClavicleRetargetTests(unittest.TestCase):
         elevations = np.degrees(np.arctan2(directions[:, 1], np.linalg.norm(directions[:, [0, 2]], axis=1)))
         # The 38-degree arm is just below the full-alignment threshold.
         np.testing.assert_allclose(elevations, [-15, -15], atol=.5)
+
+    def test_pmx_uses_the_same_rest_calibration_at_every_arm_pose(self):
+        reference, target = rest_pose(0, 18), rest_pose(-55, -18)
+        lift, axis, gain = clavicle_rest_calibration(reference, target, pmx=True)
+        np.testing.assert_allclose(lift, Rotation.from_euler('z', [18, -18], degrees=True).as_matrix())
+        np.testing.assert_allclose(axis, [[0, 0, 1], [0, 0, -1]])
+        np.testing.assert_allclose(gain, [.5, .5])
+
+        neutral = np.repeat(np.eye(3)[None], 22, axis=0)
+        source = np.repeat(neutral[None], 3, axis=0)
+        source[:, 16:18] = Rotation.from_euler('z', [-60, 55, -30, 15, 12, 2], degrees=True).as_matrix().reshape(3, 2, 3, 3)
+        # Keep one asymmetric shrug through all three arm poses.
+        source[:, 13] = Rotation.from_euler('z', 20, degrees=True).as_matrix()
+        chest = np.repeat(np.eye(3)[None], 3, axis=0)
+        result = clavicle_rotations(source, neutral, chest, reference, target, pmx=True)
+        expected = Rotation.from_euler('z', [28, -18], degrees=True).as_matrix()
+        np.testing.assert_allclose(result, np.broadcast_to(expected, result.shape), atol=1e-12)
+
+    def test_pmx_t_pose_keeps_roll_and_does_not_add_lift(self):
+        reference, target = rest_pose(0, 18), rest_pose(0, -18)
+        neutral = np.repeat(np.eye(3)[None], 22, axis=0)
+        source = neutral[None].copy()
+        source[0, 13] = Rotation.from_euler('x', 22, degrees=True).as_matrix()
+        result = clavicle_rotations(source, neutral, neutral[None, 9], reference, target, pmx=True)
+        np.testing.assert_allclose(result, source[:, 13:15], atol=1e-12)
+
 
     def test_intermediate_rest_pose_blends_the_lift(self):
         result = clavicle_rest_lift(rest_pose(0, 18), rest_pose(-25, -9))

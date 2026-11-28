@@ -70,6 +70,11 @@ class StreamWorkspace:
         self.stream_people.setObjectName('streamPeopleList')
         self.stream_people.setAccessibleName('People to stream')
         column.addWidget(self.stream_people, 1)
+        self.stream_prepare_button = QPushButton('Prepare Stream Previews')
+        self.stream_prepare_button.setToolTip('Build missing stream skeletons for the selected motion result using saved takes.')
+        self.stream_prepare_button.clicked.connect(self.prepare_stream_previews)
+        column.addWidget(self.stream_prepare_button)
+        self.stream_prepare_button.hide()
         self.stream_status = QLabel()
         self.stream_status.setWordWrap(True)
         self.stream_status.setObjectName('muted')
@@ -80,6 +85,7 @@ class StreamWorkspace:
         self._stream_scope = None
         self._stream_checked = set()
         self._stream_rows = None
+        self._stream_preview_states = {}
         self._stream_frame = None
         self._stream_bake_actor = None
         self._stream_timer = QTimer(page)
@@ -175,15 +181,44 @@ class StreamWorkspace:
 
     def stream_people_with_motion(self):
         if self.people_state:
-            if self.scene_data is None:
-                return ()
             return tuple((person['id'], person['name']) for person in self.people_state['people']
-                         if any(stream_rig(take.target_asset) is not None and 'rig' in take.arrays
-                                for take in self.scene_data.takes.get(person['id'], ())))
+                         if person.get('takes'))
         if self.motion_view.target_frames is not None and stream_rig(self.motion_view.target_asset):
             actor = self._single_actor
             return ((1, actor['name'] if actor else 'Person 1'),)
         return ()
+
+    def stream_preview_states(self):
+        if not self.people_state:
+            return {}
+        states = {}
+        for person in self.people_state['people']:
+            total = len(person.get('takes', ()))
+            if not total:
+                continue
+            ident = person['id']
+            if self.scene_data is None:
+                states[ident] = 'Waiting for shared scene'
+                continue
+            takes = self.scene_data.takes.get(ident, ())
+            ready = sum(stream_rig(take.target_asset) is not None and 'rig' in take.arrays for take in takes)
+            if ready < total:
+                states[ident] = 'Some takes unavailable' if ready else 'Preview unavailable'
+        return states
+
+    def prepare_stream_previews(self):
+        if not self.people_state or self.scene_data is None or self.busy or self.contact_saving:
+            return
+        from .people_store import safe_child
+
+        needs_preview = self.stream_preview_states()
+        projects = [safe_child(self.people_root, take['project'])
+                    for person in self.people_state['people'] if person['id'] in needs_preview
+                    for take in person.get('takes', ())]
+        if projects and not self.prepare_target_preview(projects=projects):
+            self.status.setText('No stream previews can be prepared for this result. Check the take in People, '
+                                'choose an available motion result or apply Motion Correction.')
+        self.update_stream()
 
     def stream_source_at_playhead(self, ident, name):
         view = self.motion_view
@@ -390,18 +425,33 @@ class StreamWorkspace:
         if isinstance(sender, BoneStream):
             self.stream_bake_commands(sender)
         rows = self.stream_people_with_motion()
-        if rows != self._stream_rows:
+        preview_states = self.stream_preview_states()
+        if rows != self._stream_rows or preview_states != self._stream_preview_states:
+            previous = self.stream_people.currentItem()
+            current = previous.data(Qt.UserRole) if previous else None
             with QSignalBlocker(self.stream_people):
                 self.stream_people.clear()
                 for ident, name in rows:
-                    item = QListWidgetItem(name, self.stream_people)
+                    state = preview_states.get(ident)
+                    item = QListWidgetItem(f'{name} · {state}' if state else name, self.stream_people)
                     item.setData(Qt.UserRole, ident)
-                    item.setToolTip('Unreal subject: ' + subject_name(self.stream_actor_id(ident), name))
+                    subject = 'Unreal subject: ' + subject_name(self.stream_actor_id(ident), name)
+                    if state and self.scene_data is not None:
+                        subject += '\nUse Prepare Stream Previews to build missing skeletons from saved motion.'
+                    item.setToolTip(subject)
                     item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
                     item.setCheckState(Qt.Checked if ident in self._stream_checked else Qt.Unchecked)
+                    if ident == current:
+                        self.stream_people.setCurrentItem(item)
             self._stream_rows = rows
+            self._stream_preview_states = preview_states
 
-        self.stream_reference_button.setEnabled(bool(rows) and not getattr(self, 'busy', False))
+        can_prepare = self.scene_data is not None and bool(preview_states)
+        busy = getattr(self, 'busy', False)
+        self.stream_prepare_button.setVisible(can_prepare)
+        self.stream_prepare_button.setEnabled(can_prepare and not busy and not self.contact_saving)
+        self.stream_reference_button.setEnabled(not busy and any(
+            preview_states.get(ident) in (None, 'Some takes unavailable') for ident, _ in rows))
         if sender is None:
             status = 'Select a target to stream.' if rows else 'Prepare motion to list people.'
         else:
@@ -487,6 +537,8 @@ class StreamWorkspace:
                 status = 'Connected. Check people to stream.'
             else:
                 status = f'Connected · {len(sources)} people at this frame'
+        if can_prepare:
+            status += '\nSome takes are unavailable for streaming. Use Prepare Stream Previews.'
         status = self._stream_port_error or status
         if self.stream_status.text() != status:
             self.stream_status.setText(status)

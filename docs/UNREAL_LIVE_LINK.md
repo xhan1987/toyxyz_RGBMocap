@@ -203,7 +203,10 @@ terms apply to the separately installed Unreal Engine.
 
 1. Open a project with prepared offline bone motion.
 2. In **Stream > Target**, choose **Unreal Live Link** and check the people to
-   send. These checkboxes are independent of People visibility.
+   send. These checkboxes are independent of People visibility. People with
+   saved takes stay listed when a take's stream skeleton is unavailable. Use
+   **Prepare Stream Previews** to rebuild missing skeletons from saved motion
+   for the selected result.
 3. In the receiving Unreal project, enable the built-in **Live Link** and
    **UDP Messaging** plugins, restart if requested, then open
    **Window > Virtual Production > Live Link**.

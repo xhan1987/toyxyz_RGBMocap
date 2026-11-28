@@ -884,22 +884,25 @@ class MainWindow(FirstPersonWorkspace,PreviewExportWorkspace,GemXWorkspace,Promp
         return ((self.project/RESULTS[self.active_result][0]).is_file()
                 and result_is_current(self.project,self.active_result))
 
-    def prepare_target_preview(self):
-        if self.model_choice.currentData()=='gemx':return
-        if self.project is None or self.busy or self.contact_saving:return
+    def prepare_target_preview(self, *, projects=None):
+        if self.model_choice.currentData()=='gemx':return False
+        if self.project is None or self.busy or self.contact_saving:return False
         from .mixamo_data import current
-        projects=[self.project]
-        if self.people_state:
-            from .people_store import safe_child
-            projects += [safe_child(self.people_root,take['project']) for person in self.people_state['people']
-                if person.get('checked') for take in person.get('takes',[])]
+        if projects is None:
+            projects=[self.project]
+            if self.people_state:
+                from .people_store import safe_child
+                projects += [safe_child(self.people_root,take['project']) for person in self.people_state['people']
+                    if person.get('checked') for take in person.get('takes',[])]
         jobs=[]
         for project in dict.fromkeys(projects):
             from .flow_placement import needs_update
             placement_old=self.model_choice.currentData()=='flowhmr' and needs_update(project)
             if (project/RESULTS[base_result(self.active_result)][0]).is_file() and (placement_old or result_is_current(project,self.active_result) and not current(project,self.active_result)):
                 jobs.append(('rig',['--project',str(project),'--result',self.active_result]))
-        if jobs:self.start_jobs(jobs)
+        if jobs:
+            self.start_jobs(jobs)
+        return bool(jobs)
 
     def open_model_manager(self):
         dialog = ModelsDialog(self)

@@ -48,14 +48,18 @@ def local_from_world(world):
         q[:, j] = world[:, PARENTS[j]].swapaxes(-1, -2) @ world[:, j]
     return q
 
-def baseline(source_world, srest, trest):
+def baseline(source_world, srest, trest, *, pelvis_world=None):
     child = {0: 3, 1: 4, 2: 5, 3: 6, 4: 7, 5: 8, 6: 9, 7: 10, 8: 11, 9: 12, 12: 15, 13: 16, 14: 17, 16: 18, 17: 19, 18: 20, 19: 21}
     offsets = np.tile(np.eye(3), (22, 1, 1))
     for (j, k) in child.items():
+        if j == 0 and pelvis_world is not None:
+            continue
         offsets[j] = align(trest[k] - trest[j], srest[k] - srest[j])
     for j in [10, 11, 15, 20, 21]:
         offsets[j] = offsets[PARENTS[j]]
     desired = source_world @ offsets
+    if pelvis_world is not None:
+        desired[:, 0] = pelvis_world
     return local_from_world(desired)
 
 def skin(data, v, w):

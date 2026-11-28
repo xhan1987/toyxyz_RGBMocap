@@ -23,7 +23,7 @@ def body_trajectory_root(parents, mapped):
         raise ValueError('The mapped humanoid body must share one hierarchy root.')
     return next(iter(roots))
 
-def body_mapping(kind,bones,semantic):
+def body_mapping(kind,bones,semantic,*,parents=None):
     names=set(bones)
     if kind=='mixamo':
         suffix={}
@@ -33,7 +33,14 @@ def body_mapping(kind,bones,semantic):
         missing=[n for n,v in zip(NAMES,mapping) if len(v)!=1]
         if missing:raise ValueError('Expected a Mixamo humanoid rig. Missing or ambiguous bones: '+', '.join(missing))
         return [v[0] for v in mapping]
-    mapping=[semantic.get(n) for n in VRM] if kind=='vrm' else PMX
+    mapping=[semantic.get(n) for n in VRM] if kind=='vrm' else PMX.copy()
+    if kind=='pmx' and parents is not None and mapping[6] not in names:
+        # Some PMX rigs label the middle torso bone as Upper Body 3.
+        lower, upper = mapping[3], mapping[9]
+        middle = parents.get(upper)
+        if (middle in ('上半身１','上半身3','上半身３') and middle in names
+                and parents.get(middle)==lower):
+            mapping[6]=middle
     missing=[NAMES[i] for i,n in enumerate(mapping) if n not in names]
     if missing:raise ValueError('Unsupported humanoid mapping (manual mapping is not available yet): '+', '.join(missing))
     if len(set(mapping))!=22:raise ValueError('Humanoid bones must have distinct mappings')

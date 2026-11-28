@@ -56,6 +56,14 @@ Retargeting uses the selected source motion and its applied contact timings.
 **Apply Correction** also refreshes characters linked to the corrected source,
 including hidden characters. After other source changes, run **Retarget** again.
 A character marked **Needs retarget** must be updated before export.
+
+Some PMX models name the middle of their three torso bones `上半身3` even
+though it sits between `上半身` and `上半身2` in the hierarchy. The importer
+recognizes this layout. For SMPL-family motion, PMX retargeting uses the
+captured pelvis rotation even when the target pelvis and first torso bone
+start at nearly the same position. This keeps that rig layout from adding
+height to jumps. For an existing PMX animation, run **Retarget** again.
+
 Unreachable hand/foot targets
 are not solved by stretching bones. Large differences in body proportions may
 require further editing in animation software. Travel distance can differ from

@@ -27,7 +27,11 @@ def _run(folder,kind):
  m.source_safe_reach=safe_reach;m.two_bone=two_bone
  started=time.perf_counter();geo=np.load(OUT/f'{kind}-contact-geometry.npz');target=np.load(OUT/f'{kind}-canonical.npz');rest=target['rest']
  ratio=np.mean(np.linalg.norm(rest[[4,5]]-rest[[1,2]],axis=1)+np.linalg.norm(rest[[7,8]]-rest[[4,5]],axis=1))/np.mean(np.linalg.norm(source['rest'][[4,5]]-source['rest'][[1,2]],axis=1)+np.linalg.norm(source['rest'][[7,8]]-source['rest'][[4,5]],axis=1))
- local=m.baseline(source['world'],source['rest'],rest);local,cal=m.corrected_world(local,m.PARENTS,label,geo)
+ # PMX pelvis and first spine can be siblings with nearly coincident pivots.
+ # Seed the pelvis with the same native rotation used by characterize.
+ pelvis_world=native[:,0] if kind=='pmx' else None
+ local=m.baseline(source['world'],source['rest'],rest,pelvis_world=pelvis_world)
+ local,cal=m.corrected_world(local,m.PARENTS,label,geo)
  root=source['points'][:,0]*ratio;root[:,1]+=rest[0,1]-source['rest'][0,1]*ratio;p,w=m.fk(local,rest,root)
  raw=dict(local=local,root=root,points=p,world=w,rest=rest,names=target['names'],ratio=ratio,**cal)
  base,_=m.characterize(raw,raw,source,native);want=desired(source['world'],neutral,rest)

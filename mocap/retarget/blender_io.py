@@ -68,13 +68,14 @@ def import_character(filename, out):
                 for part,name in zip(('Proximal','Intermediate','Distal'),thumb):
                     if name:semantic[side+'Thumb'+part]=name
     else:
-        addon_utils.enable('mmd_tools',default_set=False,persistent=False)
+        addon_utils.enable('mmd_tools',default_set=True,persistent=False)
         bpy.ops.mmd_tools.import_model(filepath=str(filename),types={'MESH','ARMATURE'},scale=.08,log_level='ERROR')
     arms=[o for o in bpy.context.scene.objects if o.type=='ARMATURE']
     if len(arms)!=1:raise ValueError('Import one humanoid armature per character file.')
     arm=arms[0]
-    mapping=body_mapping(kind,arm.data.bones.keys(),semantic)
-    trajectory_root=body_trajectory_root({b.name:b.parent.name if b.parent else None for b in arm.data.bones},mapping)
+    parents={bone.name:bone.parent.name if bone.parent else None for bone in arm.data.bones}
+    mapping=body_mapping(kind,parents,semantic,parents=parents)
+    trajectory_root=body_trajectory_root(parents,mapping)
     for o in bpy.context.scene.objects:
         o.animation_data_clear()
         if o.type=='MESH':
